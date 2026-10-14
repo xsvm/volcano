@@ -10,7 +10,7 @@ permissions: read-all
 jobs:
   coverage:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -19,7 +19,8 @@ jobs:
       - name: Unit tests with coverage
         run: |
           pkgs=$(go list ./pkg/... ./cmd/... | grep -v "/e2e")
-          sudo -E env "PATH=$PATH" go test -p 4 -covermode=atomic -coverprofile=cover.out $pkgs > test.log 2>&1 || echo "some packages failed"
+          coverpkg=$(echo $pkgs | tr ' ' ',')
+          sudo -E env "PATH=$PATH" go test -p 4 -covermode=atomic -coverpkg="$coverpkg" -coverprofile=cover.out $pkgs > test.log 2>&1 || echo "some packages failed"
           grep -E "^(FAIL|ok|---)" test.log | grep -v "^ok" | head -200 || true
           sudo chown "$(id -u)" cover.out test.log
           echo "commit: $(git rev-parse HEAD)" > meta.txt
