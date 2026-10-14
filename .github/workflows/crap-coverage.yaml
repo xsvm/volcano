@@ -1,0 +1,33 @@
+name: CRAP coverage (fork only)
+
+on:
+  push:
+    branches:
+      - ci/crap-coverage
+
+permissions: read-all
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.x
+      - name: Unit tests with coverage
+        run: |
+          pkgs=$(go list ./pkg/... ./cmd/... | grep -v "/e2e")
+          sudo -E env "PATH=$PATH" go test -p 4 -covermode=atomic -coverprofile=cover.out $pkgs > test.log 2>&1 || echo "some packages failed"
+          grep -E "^(FAIL|ok|---)" test.log | grep -v "^ok" | head -200 || true
+          sudo chown "$(id -u)" cover.out test.log
+          echo "commit: $(git rev-parse HEAD)" > meta.txt
+          wc -l cover.out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            cover.out
+            test.log
+            meta.txt
