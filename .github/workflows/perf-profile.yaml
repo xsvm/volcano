@@ -33,6 +33,12 @@ jobs:
       - name: Setup cluster
         working-directory: benchmark
         run: make setup KWOK_NODE_COUNT=$KWOK_NODE_COUNT
+      - name: Diagnose
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl -n volcano-system describe pods | tail -n 120 || true
+          kubectl -n volcano-system get events --sort-by=.lastTimestamp | tail -n 40 || true
       - name: Profile while running gang benchmark
         working-directory: benchmark
         run: |
