@@ -1,0 +1,15 @@
+name: Build custom-plugin example (fork only)
+
+on:
+  push:
+    branches:
+      - ci/verify-dockerfile
+
+permissions: read-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f example/custom-plugin/Dockerfile .
