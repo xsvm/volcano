@@ -3,7 +3,7 @@ name: Scheduler perf profile (fork only)
 on:
   push:
     branches:
-      - ci/perf-profile
+      - ci/perf-after
 
 permissions: read-all
 
