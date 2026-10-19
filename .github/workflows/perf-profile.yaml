@@ -1,0 +1,73 @@
+name: Scheduler perf profile (fork only)
+
+on:
+  push:
+    branches:
+      - ci/verify-image-tag
+
+permissions: read-all
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      KWOK_NODE_COUNT: "1000"
+      JOBS: "100"
+      REPLICAS: "100"
+      MIN_AVAILABLE: "100"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.x
+      - name: Tools
+        run: |
+          go install sigs.k8s.io/kind@v0.27.0
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          kubectl version --client; helm version; jq --version; nproc; free -g
+      - name: Enable scheduler pprof
+        run: |
+          sed -i 's|^HELM_QPS_ARGS=(|HELM_QPS_ARGS=(\n    --set custom.scheduler_pprof_enable=true|' benchmark/scripts/install-volcano.sh
+          grep -n "scheduler_pprof_enable" benchmark/scripts/install-volcano.sh
+      - name: Setup cluster
+        working-directory: benchmark
+        run: make setup KWOK_NODE_COUNT=$KWOK_NODE_COUNT
+      - name: Diagnose
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl -n volcano-system describe pods | tail -n 120 || true
+          kubectl -n volcano-system get events --sort-by=.lastTimestamp | tail -n 40 || true
+      - name: Show deployed images
+        run: kubectl -n volcano-system get deploy -o yaml | grep "image:"
+      - name: Profile while running gang benchmark
+        working-directory: benchmark
+        run: |
+          mkdir -p ../prof
+          POD=$(kubectl -n volcano-system get pod -l app=volcano-scheduler -o jsonpath='{.items[0].metadata.name}')
+          echo "scheduler pod: $POD"
+          kubectl -n volcano-system port-forward "pod/$POD" 18080:8080 > ../prof/pf.log 2>&1 &
+          sleep 5
+          curl -sf localhost:18080/debug/pprof/ | head -5
+          ( for i in 1 2 3 4 5 6; do curl -s -o ../prof/cpu-$i.pprof "localhost:18080/debug/pprof/profile?seconds=60"; done ) &
+          PROF=$!
+          make test-gang-env JOBS=$JOBS REPLICAS=$REPLICAS MIN_AVAILABLE=$MIN_AVAILABLE 2>&1 | tail -80 || true
+          curl -s -o ../prof/heap.pprof localhost:18080/debug/pprof/heap
+          curl -s -o ../prof/allocs.pprof localhost:18080/debug/pprof/allocs
+          curl -s -o ../prof/goroutine.txt "localhost:18080/debug/pprof/goroutine?debug=1"
+          wait $PROF || true
+          curl -s localhost:18080/metrics > ../prof/metrics.txt || true
+          kubectl -n volcano-system logs "$POD" --tail=3000 > ../prof/scheduler.log || true
+          git rev-parse HEAD > ../prof/commit.txt
+          ls -la ../prof results || true
+      - name: Top CPU
+        run: |
+          for f in prof/cpu-*.pprof; do [ -s "$f" ] && go tool pprof -top -nodecount=40 "$f" 2>/dev/null | head -50; done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-profile
+          path: |
+            prof
+            benchmark/results
