@@ -39,6 +39,8 @@ jobs:
           kubectl get pods -A -o wide || true
           kubectl -n volcano-system describe pods | tail -n 120 || true
           kubectl -n volcano-system get events --sort-by=.lastTimestamp | tail -n 40 || true
+          kubectl -n volcano-system logs deploy/volcano-agent-scheduler --previous --tail=80 || true
+          kubectl -n volcano-system logs deploy/volcano-agent-scheduler --tail=80 || true
       - name: Show deployed images
         run: kubectl -n volcano-system get deploy -o yaml | grep "image:"
       - name: Profile while running gang benchmark
