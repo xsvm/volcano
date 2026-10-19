@@ -30,6 +30,9 @@ jobs:
         run: |
           sed -i 's|^HELM_QPS_ARGS=(|HELM_QPS_ARGS=(\n    --set custom.scheduler_pprof_enable=true|' benchmark/scripts/install-volcano.sh
           grep -n "scheduler_pprof_enable" benchmark/scripts/install-volcano.sh
+          # make images tags images with the commit; the chart defaults to :latest from Docker Hub.
+          sed -i "s|^HELM_QPS_ARGS=(|HELM_QPS_ARGS=(\n    --set basic.image_tag_version=$(git rev-parse HEAD)|" benchmark/scripts/install-volcano.sh
+          grep -n "image_tag_version" benchmark/scripts/install-volcano.sh
       - name: Setup cluster
         working-directory: benchmark
         run: make setup KWOK_NODE_COUNT=$KWOK_NODE_COUNT
